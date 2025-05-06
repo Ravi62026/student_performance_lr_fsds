@@ -2,6 +2,19 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import pickle
+import datetime
+
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
+
+uri = "mongodb+srv://cohort:cohort@cluster0.nxmkmie.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+
+client = MongoClient(uri, server_api=ServerApi('1'))
+
+db = client["student"]
+
+collection = db["student_performance"]
+
 
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 
@@ -27,27 +40,53 @@ def predict_data(data):
     prediction = model.predict(processed_data)
     return prediction
 
+def save_to_mongodb(user_data, prediction):
+    # Convert user_data values to native Python types
+    processed_user_data = {}
+    for key, value in user_data.items():
+        if isinstance(value, (np.int64, np.int32, np.float64, np.float32)):
+            processed_user_data[key] = value.item()
+        else:
+            processed_user_data[key] = value
+    
+    # Create a document to insert
+    document = {
+        "user_data": processed_user_data,
+        "prediction": float(prediction[0]),
+        "timestamp": datetime.datetime.now()
+    }
+    
+    # Insert the document into the collection
+    result = collection.insert_one(document)
+    
+    return result.inserted_id
 
 def main():
-    st.title("student performnce perdiction")
-    st.write("enter your data to get a prediction for your performance")
+    st.title("Student Performance Prediction")
+    st.write("Enter your data to get a prediction for your performance")
     
-    hour_sutdied = st.number_input("Hours studied",min_value = 1, max_value = 10 , value = 5)
-    prvious_score = st.number_input("previous score",min_value = 40, max_value = 100 , value = 70)
-    extra = st.selectbox("extra curri activity" , ['Yes',"No"])
-    sleeping_hour = st.number_input("sleeping hours",min_value = 4, max_value = 10 , value = 7)
-    number_of_peper_solved = st.number_input("number of question paper solved",min_value = 0, max_value = 10 , value = 5)
+    hour_studied = st.number_input("Hours studied", min_value=1, max_value=10, value=5)
+    previous_score = st.number_input("Previous score", min_value=40, max_value=100, value=70)
+    extra = st.selectbox("Extracurricular activities", ['Yes', "No"])
+    sleeping_hour = st.number_input("Sleeping hours", min_value=4, max_value=10, value=7)
+    number_of_paper_solved = st.number_input("Number of question papers solved", min_value=0, max_value=10, value=5)
     
-    if st.button("predict-your_score"):
+    if st.button("Predict your score"):
         user_data = {
-            "Hours Studied":hour_sutdied,
-            "Previous Scores":prvious_score,
-            "Extracurricular Activities":extra,
-            "Sleep Hours":sleeping_hour,
-            "Sample Question Papers Practiced":number_of_peper_solved
+            "Hours Studied": hour_studied,
+            "Previous Scores": previous_score,
+            "Extracurricular Activities": extra,
+            "Sleep Hours": sleeping_hour,
+            "Sample Question Papers Practiced": number_of_paper_solved
         }
         prediction = predict_data(user_data)
-        st.success(f"your prediciotn result is {prediction}")
+        
+        # Save the data to MongoDB
+        inserted_id = save_to_mongodb(user_data, prediction)
+        
+        st.success(f"Your prediction result is {prediction[0]:.2f}")
+        st.info(f"Data saved to MongoDB with ID: {inserted_id}")
+
 if __name__ == "__main__":
     main()
     
